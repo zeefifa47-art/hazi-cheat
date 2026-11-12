@@ -2,15 +2,11 @@ name: Build APK
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: hazi-cheat
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +19,48 @@ jobs:
         with:
           gradle-version: 8.5
 
+      - name: Locate Android project
+        id: loc
+        shell: bash
+        run: |
+          set -e
+          if [ -z "$(find . -name 'settings.gradle.kts' -not -path './.git/*' -print -quit)" ] && \
+             [ -z "$(find . -name 'settings_gradle.kts' -not -path './.git/*' -print -quit)" ]; then
+            find . -name '*.zip' -not -path './.git/*' | while read -r z; do
+              unzip -oq "$z" -d "$(dirname "$z")/_unzipped_$(basename "$z" .zip)" || true
+            done
+          fi
+          find . \( -name 'settings_gradle.kts' -o -name 'build_gradle.kts' \) -not -path './.git/*' | while read -r f; do
+            d=$(dirname "$f")
+            b=$(basename "$f" | sed 's/_gradle\.kts$/.gradle.kts/')
+            [ -f "$d/$b" ] || cp "$f" "$d/$b"
+          done
+          S=$(find . -name 'settings.gradle.kts' -not -path './.git/*' | awk '{print length, $0}' | sort -n | head -n1 | cut -d' ' -f2-)
+          if [ -z "$S" ]; then
+            echo "settings.gradle.kts tidak ditemukan di repo. Isi repo:"
+            find . -not -path './.git/*' -type f | head -n 100
+            exit 1
+          fi
+          ROOT=$(dirname "$S")
+          echo "Project root: $ROOT"
+          ls -la "$ROOT" "$ROOT/app" || true
+          echo "dir=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Install Android SDK platform
+        shell: bash
+        run: |
+          SDKM="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$SDKM" ]; then
+            yes | "$SDKM" --licenses > /dev/null || true
+            "$SDKM" "platforms;android-34" "build-tools;34.0.0" || true
+          fi
+
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+        working-directory: ${{ steps.loc.outputs.dir }}
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
           name: hazi-cheat-debug
-          path: hazi-cheat/app/build/outputs/apk/debug/*.apk
+          path: ${{ steps.loc.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
