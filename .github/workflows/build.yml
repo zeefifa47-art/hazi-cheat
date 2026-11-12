@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hazi-cheat
     steps:
       - uses: actions/checkout@v4
 
@@ -26,4 +29,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hazi-cheat-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: hazi-cheat/app/build/outputs/apk/debug/*.apk
